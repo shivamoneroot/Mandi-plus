@@ -1,28 +1,146 @@
-# Invoice Creation Flow - Implementation Guide
+# Signup → Login → Create Invoice - Implementation Guide
 
-This document explains the complete flow of how invoice creation works in the Mandi Plus API, from user registration to PDF generation.
+This document explains the complete flow of how a user **signs up with OTP**, **logs in**, and then **creates an invoice** in the Mandi Plus API, all the way to PDF generation.
 
 ## Complete Flow Overview
 
-### STEP 1: User Registration (if not already registered)
+### STEP 1: User Signup (Registration with OTP)
 
-**Endpoint:** `POST /users`
+**Endpoint:** `POST /auth/register`
+
+**DTO:** `RegisterDto`
 
 **Request:**
 ```json
 {
-  "mobileNumber": "+919876543210",
-  "state": "Maharashtra",
-  "name": "John Doe"  // optional
+  "name": "John Doe",
+  "mobileNumber": "9876543210",
+  "state": "MAHARASHTRA"
 }
 ```
 
-- User is created in database with basic info
-- User can later update full profile details via `PATCH /users/:id`
+**What happens in `AuthService.register`:**
+- Checks if a `User` with this `mobileNumber` already exists.
+- If not, creates a new `User` with:
+  - `name`
+  - `mobileNumber`
+  - `state`
+- Saves the user.
+- Generates an OTP via `OtpService.generateOtp(mobileNumber)`.
+- Returns: `{ "message": "OTP sent for registration" }`.
 
 ---
 
-### STEP 2: User Creates Invoice
+### STEP 2: Verify Signup OTP & Create Session
+
+**Endpoint:** `POST /auth/register/verify-otp`
+
+**DTO:** `VerifyOtpDto`
+
+**Request:**
+```json
+{
+  "mobileNumber": "9876543210",
+  "otp": "1234"
+}
+```
+
+**What happens in `AuthService.verifyRegisterOtp`:**
+- Verifies the OTP using `OtpService.verifyOtp(mobileNumber, otp)`.
+- Fetches the `User` by `mobileNumber`.
+- Calls `createSession(user, req)` which:
+  - Creates a `UserSession` with:
+    - `user`
+    - `deviceInfo` from `User-Agent` header
+    - `ipAddress` from request
+    - `expiresAt` ≈ 60 days in future
+  - Generates a **refresh token** bound to this session and stores its hash in `UserSession.refreshTokenHash`.
+  - Generates an **access token** (JWT) for the user.
+- Returns:
+```json
+{
+  "accessToken": "<jwt-access-token>",
+  "refreshToken": "<jwt-refresh-token>"
+}
+```
+
+The frontend should store the `accessToken` (and usually the `refreshToken` in a secure cookie or storage) to call further APIs.
+
+---
+
+### STEP 3: Login for Returning Users (OTP Based)
+
+If the user is already registered and comes back later:
+
+**Endpoint:** `POST /auth/login`
+
+**DTO:** `LoginDto`
+
+```json
+{
+  "mobileNumber": "9876543210"
+}
+```
+
+**What happens in `AuthService.login`:**
+- Checks that a `User` exists with that `mobileNumber`.
+- Generates OTP via `OtpService.generateOtp`.
+- Returns: `{ "message": "OTP sent for login" }`.
+
+Then the user verifies the OTP:
+
+**Endpoint:** `POST /auth/login/verify-otp`
+
+**DTO:** `VerifyOtpDto`
+
+**What happens in `AuthController.verifyLoginOtp`:**
+- Calls `AuthService.verifyLoginOtp(dto, req)`, which:
+  - Verifies OTP.
+  - Loads the `User` by `mobileNumber`.
+  - Calls `createSession` again (same as registration) to get new tokens.
+- The controller:
+  - Sets `refreshToken` as **httpOnly cookie**.
+  - Returns `{ "accessToken": "<jwt-access-token>" }`.
+
+Once this is done, the user is authenticated and can proceed to create invoices.
+
+---
+
+### STEP 4: Optional - Enrich User Profile
+
+Beyond minimal auth details, you can store richer mandi profile information using the `UsersModule`.
+
+**Endpoint:** `POST /users`
+
+**DTO:** `CreateUserDto`
+
+Example:
+```json
+{
+  "mobileNumber": "+919876543210",
+  "secondaryMobileNumber": "+919876543211",
+  "name": "John Doe",
+  "state": "MAHARASHTRA",
+  "identity": "SUPPLIER",
+  "products": ["Wheat", "Rice"],
+  "loadingPoint": ["Yard 1", "Yard 2"],
+  "destinationShopAddress": ["Shop 1 address"],
+  "route": ["Route 1"],
+  "officeAddress": ["Office address"],
+  "destinationAddress": ["Destination address 1"]
+}
+```
+
+**What happens in `UsersService.create`:**
+- Ensures `mobileNumber` is unique.
+- Ensures `secondaryMobileNumber` (if provided) is unique.
+- Creates and saves a `User` with extended profile fields.
+
+User profile can later be updated via `PATCH /users/:id`.
+
+---
+
+### STEP 5: User Creates Invoice
 
 **Endpoint:** `POST /invoices` (multipart/form-data)
 
@@ -49,9 +167,9 @@ This document explains the complete flow of how invoice creation works in the Ma
 
 ---
 
-### STEP 3: Invoice Controller Receives Request
+### STEP 6: Invoice Controller Receives Request
 
-**Location:** `src/invoices/invoices.controller.ts`
+**Location:** `src/modules/invoices/invoices.controller.ts`
 
 ```typescript
 @Post()
@@ -69,9 +187,9 @@ This document explains the complete flow of how invoice creation works in the Ma
 
 ---
 
-### STEP 4: Invoice Service - Validate Invoice Number
+### STEP 7: Invoice Service - Validate Invoice Number
 
-**Location:** `src/invoices/invoices.service.ts` (lines 33-42)
+**Location:** `src/modules/invoices/invoices.service.ts`
 
 **What happens:**
 - Checks if invoice number already exists in database
@@ -80,9 +198,9 @@ This document explains the complete flow of how invoice creation works in the Ma
 
 ---
 
-### STEP 5: Handle Truck by Truck Number
+### STEP 8: Handle Truck by Truck Number
 
-**Location:** `src/invoices/invoices.service.ts` (lines 44-63)
+**Location:** `src/modules/invoices/invoices.service.ts`
 
 **Logic:**
 1. If `truckNumber` is provided:
@@ -106,9 +224,9 @@ This document explains the complete flow of how invoice creation works in the Ma
 
 ---
 
-### STEP 6: Upload Weighment Slips to Cloud Storage
+### STEP 9: Upload Weighment Slips to Cloud Storage
 
-**Location:** `src/invoices/invoices.service.ts` (lines 65-72)
+**Location:** `src/modules/invoices/invoices.service.ts`
 
 **What happens:**
 1. If weighment slip files are provided:
@@ -125,9 +243,9 @@ This document explains the complete flow of how invoice creation works in the Ma
 
 ---
 
-### STEP 7: Create Invoice Record in Database
+### STEP 10: Create Invoice Record in Database
 
-**Location:** `src/invoices/invoices.service.ts` (lines 74-105)
+**Location:** `src/modules/invoices/invoices.service.ts`
 
 **What happens:**
 1. Build invoice data object with all fields
@@ -141,9 +259,9 @@ This document explains the complete flow of how invoice creation works in the Ma
 
 ---
 
-### STEP 8: Queue PDF Generation Job (Async)
+### STEP 11: Queue PDF Generation Job (Async)
 
-**Location:** `src/invoices/invoices.service.ts` (lines 107-110)
+**Location:** `src/modules/invoices/invoices.service.ts`
 
 **What happens:**
 ```typescript
@@ -165,9 +283,9 @@ await this.invoicePdfQueue.add('generate-pdf', {
 
 ---
 
-### STEP 9: BullMQ Processor Picks Up Job (Background)
+### STEP 12: BullMQ Processor Picks Up Job (Background)
 
-**Location:** `src/queue/processors/invoice-pdf.processor.ts` (lines 28-42)
+**Location:** `src/modules/queue/processors/invoice-pdf.processor.ts`
 
 **What happens:**
 1. BullMQ worker (running in background) picks up the job
@@ -183,9 +301,9 @@ await this.invoicePdfQueue.add('generate-pdf', {
 
 ---
 
-### STEP 10: Generate PDF with Weighment Slips
+### STEP 13: Generate PDF with Weighment Slips
 
-**Location:** `src/pdf/pdf.service.ts`
+**Location:** `src/modules/pdf/pdf.service.ts`
 
 **What happens:**
 1. `pdfService.generateInvoicePdf()` is called with:
@@ -202,9 +320,9 @@ await this.invoicePdfQueue.add('generate-pdf', {
 
 ---
 
-### STEP 11: Upload PDF to Cloud Storage
+### STEP 14: Upload PDF to Cloud Storage
 
-**Location:** `src/queue/processors/invoice-pdf.processor.ts` (lines 50-56)
+**Location:** `src/modules/queue/processors/invoice-pdf.processor.ts`
 
 **What happens:**
 1. Generate filename: `invoice-{invoiceNumber}-{timestamp}.pdf`
@@ -223,9 +341,9 @@ await this.invoicePdfQueue.add('generate-pdf', {
 
 ---
 
-### STEP 12: Update Invoice with PDF URL
+### STEP 15: Update Invoice with PDF URL
 
-**Location:** `src/queue/processors/invoice-pdf.processor.ts` (lines 58-60)
+**Location:** `src/modules/queue/processors/invoice-pdf.processor.ts`
 
 **What happens:**
 ```typescript
@@ -243,25 +361,33 @@ await this.invoiceRepository.save(invoice);
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ STEP 1: User Registration                                       │
-│ POST /users → Create user with mobileNumber & state             │
+│ STEP 1: Signup / Login                                          │
+│ POST /auth/register → create user + send OTP                    │
+│ POST /auth/register/verify-otp → create session + tokens        │
+│ POST /auth/login → send OTP for existing user                   │
+│ POST /auth/login/verify-otp → create session + tokens           │
 └───────────────────────────┬─────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│ STEP 2: Create Invoice Request                                  │
+│ STEP 2: (Optional) Enrich User Profile                          │
+│ POST /users → create/update extended profile fields             │
+└───────────────────────────┬─────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ STEP 3: Create Invoice Request                                  │
 │ POST /invoices (multipart/form-data)                            │
 │ - Invoice data + weighmentSlips files + truckNumber             │
 └───────────────────────────┬─────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│ STEP 3: Controller Processing                                   │
+│ STEP 4: Controller Processing                                   │
 │ - FilesInterceptor captures files                               │
 │ - ParseFormDataPipe converts form data                          │
 │ - Calls invoicesService.create()                                │
 └───────────────────────────┬─────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│ STEP 4-7: Invoice Service (Synchronous)                        │
+│ STEP 5-8: Invoice Service (Synchronous)                        │
 │ ┌──────────────────────────────────────────────────────────┐   │
 │ │ STEP 4: Validate invoice number (check duplicate)        │   │
 │ ├──────────────────────────────────────────────────────────┤   │
