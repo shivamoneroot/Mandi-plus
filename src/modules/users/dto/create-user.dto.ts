@@ -10,6 +10,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Identity } from '../../../common/enums/user.enum';
+import { IndiaState } from 'src/common/enums/india-state.enum';
 
 export class CreateUserDto {
   @ApiProperty({ example: '+919876543210', description: 'Primary mobile number' })
@@ -36,7 +37,7 @@ export class CreateUserDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)
-  state: string;
+  state: IndiaState;
 
   @ApiProperty({ enum: Identity, example: Identity.SUPPLIER, description: 'User identity type' })
   @IsEnum(Identity)
