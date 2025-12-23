@@ -12,3 +12,10 @@ import { User } from '../../entities/user.entity';
 })
 export class UsersModule {}
 
+import { User } from 'src/entities/user.entity';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([User])],
+  exports: [TypeOrmModule],
+})
+export class UsersModule {}
