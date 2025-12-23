@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { typeOrmConfig } from './config/database.config';
 
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -30,12 +29,19 @@ import { UserSession } from './entities/user-session.entity';
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
         host: config.get<string>('DB_HOST'),
-        port: Number(config.get<number>('DB_PORT')),
-        username: config.get<string>('DB_USER'),
+        port: Number(config.get<number>('DB_PORT')) || 5432,
+        username: config.get<string>('DB_USERNAME'), //  FIXED
         password: config.get<string>('DB_PASSWORD'),
         database: config.get<string>('DB_NAME'),
-        entities: [User, OtpVerification, UserSession],
+
+        autoLoadEntities: true,
         synchronize: false,
+
+        extra: {
+          ssl: {
+            rejectUnauthorized: false,
+          },
+        },
       }),
     }),
 
@@ -47,7 +53,5 @@ import { UserSession } from './entities/user-session.entity';
     PdfModule,
     QueueModule,
   ],
-  controllers: [AppController],
-  providers: [AppService],
 })
 export class AppModule {}
