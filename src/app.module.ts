@@ -25,8 +25,6 @@ import { UserSession } from './entities/user-session.entity';
       envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
     }),
 
-    TypeOrmModule.forRoot(typeOrmConfig),
-
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
