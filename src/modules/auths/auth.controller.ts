@@ -8,7 +8,6 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  // ---------------- REGISTER ----------------
   @Post('register')
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
@@ -19,11 +18,11 @@ export class AuthController {
     return this.authService.verifyRegisterOtp(dto, req);
   }
 
-  // ---------------- LOGIN ----------------
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
+
   @Post('login/verify-otp')
   async verifyLoginOtp(
     @Body() dto: VerifyOtpDto,

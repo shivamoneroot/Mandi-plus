@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
+import { HttpModule } from '@nestjs/axios';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -17,6 +18,7 @@ import { UserSession } from 'src/entities/user-session.entity';
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'super-secret',
     }),
+    HttpModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, OtpService, TokenService],

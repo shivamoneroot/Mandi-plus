@@ -1,55 +1,71 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan } from 'typeorm';
-import * as bcrypt from 'bcrypt';
+import { Repository } from 'typeorm';
 import { OtpVerification } from 'src/entities/otp-verification.entity';
+import { HttpService } from '@nestjs/axios';
+import { lastValueFrom } from 'rxjs';
+import { AxiosResponse } from 'axios';
+
+interface TwoFactorResponse {
+  Status: 'Success' | 'Error';
+  Details: string;
+}
 
 @Injectable()
 export class OtpService {
   constructor(
     @InjectRepository(OtpVerification)
     private readonly otpRepo: Repository<OtpVerification>,
+    private readonly httpService: HttpService,
   ) {}
 
-  async generateOtp(mobileNumber: string): Promise<string> {
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  // ---------------- SEND OTP (SMS ONLY) ----------------
+  async sendOtp(mobileNumber: string): Promise<void> {
+    const template = 'MANDIPL_OTP';
 
-    const otpHash = await bcrypt.hash(otp, 10);
+    const url = `https://2factor.in/API/V1/${process.env.TWOFACTOR_API_KEY}/SMS/${mobileNumber}/AUTOGEN/${template}`;
 
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const response: AxiosResponse<TwoFactorResponse> = await lastValueFrom(
+      this.httpService.get(url),
+    );
+
+    if (response.data.Status !== 'Success') {
+      throw new BadRequestException('Failed to send OTP');
+    }
 
     await this.otpRepo.save(
       this.otpRepo.create({
         mobileNumber,
-        otpHash,
-        expiresAt,
+        providerSessionId: response.data.Details,
       }),
     );
-
-    return otp;
   }
 
+  // ---------------- VERIFY OTP ----------------
   async verifyOtp(mobileNumber: string, otp: string): Promise<void> {
-    const otpRecord = await this.otpRepo.findOne({
+    const record = await this.otpRepo.findOne({
       where: {
         mobileNumber,
         isUsed: false,
-        expiresAt: MoreThan(new Date()),
       },
       order: { createdAt: 'DESC' },
     });
 
-    if (!otpRecord) {
-      throw new BadRequestException('OTP expired or invalid');
+    if (!record) {
+      throw new BadRequestException('OTP session not found');
     }
 
-    const isMatch = await bcrypt.compare(otp, otpRecord.otpHash);
+    const url = `https://2factor.in/API/V1/${process.env.TWOFACTOR_API_KEY}/SMS/VERIFY3/${record.providerSessionId}/${otp}`;
 
-    if (!isMatch) {
-      throw new BadRequestException('Invalid OTP');
+    const response: AxiosResponse<TwoFactorResponse> = await lastValueFrom(
+      this.httpService.get(url),
+    );
+
+    if (response.data.Status !== 'Success') {
+      throw new BadRequestException('Invalid or expired OTP');
     }
 
-    otpRecord.isUsed = true;
-    await this.otpRepo.save(otpRecord);
+    record.isUsed = true;
+    await this.otpRepo.save(record);
   }
 }

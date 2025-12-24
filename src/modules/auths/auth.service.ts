@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from 'src/entities/user.entity';
@@ -27,6 +23,7 @@ export class AuthService {
     private readonly tokenService: TokenService,
   ) {}
 
+  // ---------------- CREATE SESSION ----------------
   async createSession(user: User, req: any) {
     const session = this.sessionRepo.create({
       user,
@@ -43,6 +40,7 @@ export class AuthService {
     );
 
     savedSession.refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+
     await this.sessionRepo.save(savedSession);
 
     const accessToken = this.tokenService.generateAccessToken(user.id);
@@ -50,6 +48,7 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
+  // ---------------- REGISTER ----------------
   async register(dto: RegisterDto) {
     const exists = await this.userRepo.findOne({
       where: { mobileNumber: dto.mobileNumber },
@@ -59,21 +58,22 @@ export class AuthService {
       throw new BadRequestException('Mobile already registered');
     }
 
-    const user = this.userRepo.create({
-      mobileNumber: dto.mobileNumber,
-      name: dto.name,
-      state: dto.state,
-    });
+    await this.userRepo.save(
+      this.userRepo.create({
+        mobileNumber: dto.mobileNumber,
+        name: dto.name,
+        state: dto.state,
+      }),
+    );
 
-    await this.userRepo.save(user);
+    await this.otpService.sendOtp(dto.mobileNumber);
 
-    const otp = await this.otpService.generateOtp(dto.mobileNumber);
-
-    console.log('OTP (dev):', otp);
-
-    return { message: 'OTP sent for registration' };
+    return {
+      message: 'OTP sent to mobile number',
+    };
   }
 
+  // ---------------- REGISTER VERIFY ----------------
   async verifyRegisterOtp(dto: VerifyOtpDto, req: any) {
     await this.otpService.verifyOtp(dto.mobileNumber, dto.otp);
 
@@ -81,13 +81,14 @@ export class AuthService {
       where: { mobileNumber: dto.mobileNumber },
     });
 
-    if (!user) throw new BadRequestException('User not found');
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
 
-    const tokens = await this.createSession(user, req);
-
-    return tokens;
+    return this.createSession(user, req);
   }
 
+  // ---------------- LOGIN ----------------
   async login(dto: LoginDto) {
     const user = await this.userRepo.findOne({
       where: { mobileNumber: dto.mobileNumber },
@@ -97,13 +98,14 @@ export class AuthService {
       throw new BadRequestException('User not registered');
     }
 
-    const otp = await this.otpService.generateOtp(dto.mobileNumber);
+    await this.otpService.sendOtp(dto.mobileNumber);
 
-    console.log('OTP (dev):', otp);
-
-    return { message: 'OTP sent for login' };
+    return {
+      message: 'OTP sent to mobile number',
+    };
   }
 
+  // ---------------- LOGIN VERIFY ----------------
   async verifyLoginOtp(dto: VerifyOtpDto, req: any) {
     await this.otpService.verifyOtp(dto.mobileNumber, dto.otp);
 
@@ -111,10 +113,10 @@ export class AuthService {
       where: { mobileNumber: dto.mobileNumber },
     });
 
-    if (!user) throw new BadRequestException('User not found');
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
 
-    const tokens = await this.createSession(user, req);
-
-    return tokens;
+    return this.createSession(user, req);
   }
 }

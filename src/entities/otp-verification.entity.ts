@@ -12,14 +12,12 @@ export class OtpVerification {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ length: 15 })
+  @Column()
   mobileNumber: string;
 
+  // 2factor session id
   @Column()
-  otpHash: string;
-
-  @Column({ type: 'timestamp' })
-  expiresAt: Date;
+  providerSessionId: string;
 
   @Column({ default: false })
   isUsed: boolean;
