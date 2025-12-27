@@ -34,6 +34,7 @@ export class InvoicesController {
     schema: {
       type: 'object',
       properties: {
+        userId: { type: 'string', format: 'uuid', description: 'User ID who owns this invoice' },
         invoiceNumber: { type: 'string' },
         invoiceDate: { type: 'string', format: 'date' },
         terms: { type: 'string', nullable: true },
@@ -75,6 +76,14 @@ export class InvoicesController {
   @ApiResponse({ status: 200, description: 'List of all invoices' })
   findAll() {
     return this.invoicesService.findAll();
+  }
+
+  @Get('user/:userId')
+  @ApiOperation({ summary: "Get all invoices for a specific user" })
+  @ApiResponse({ status: 200, description: 'List of user invoices' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  findByUserId(@Param('userId') userId: string) {
+    return this.invoicesService.findByUserId(userId);
   }
 
   @Get(':id')

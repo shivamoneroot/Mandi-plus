@@ -8,6 +8,7 @@ import {
   Index,
 } from 'typeorm';
 import { Truck } from './truck.entity';
+import { User } from './user.entity';
 
 @Entity('invoices')
 @Index(['invoiceNumber'], { unique: true })
@@ -95,6 +96,16 @@ export class Invoice {
 
   @Column('decimal', { precision: 12, scale: 2 })
   amount: number;
+
+  // ===============================
+  // USER RELATION
+  // ===============================
+
+  @ManyToOne(() => User, (user) => user.invoices, {
+    onDelete: 'CASCADE',
+    nullable: false,
+  })
+  user: User;
 
   // ===============================
   // TRANSPORT / VEHICLE

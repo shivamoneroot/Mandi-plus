@@ -5,9 +5,11 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  OneToMany,
 } from 'typeorm';
 import { Identity } from '../common/enums/user.enum';
 import { IndiaState } from '../common/enums/india-state.enum';
+import { Invoice } from './invoice.entity';
 
 @Entity('users')
 @Index(['mobileNumber'], { unique: true })
@@ -115,6 +117,13 @@ export class User {
     nullable: true,
   })
   destinationAddress: string[] | null;
+
+  // ===============================
+  // RELATIONS
+  // ===============================
+
+  @OneToMany(() => Invoice, (invoice) => invoice.user)
+  invoices: Invoice[];
 
   // ===============================
   // SYSTEM
