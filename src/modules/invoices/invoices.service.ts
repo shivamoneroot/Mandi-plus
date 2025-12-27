@@ -10,6 +10,7 @@ import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
 import { Invoice } from '../../entities/invoice.entity';
 import { Truck } from '../../entities/truck.entity';
+import { User } from '../../entities/user.entity';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceDto } from './dto/update-invoice.dto';
 import { StorageService } from '../storage/storage.service';
@@ -21,6 +22,8 @@ export class InvoicesService {
     private readonly invoiceRepository: Repository<Invoice>,
     @InjectRepository(Truck)
     private readonly truckRepository: Repository<Truck>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     @InjectQueue('invoice-pdf')
     private readonly invoicePdfQueue: Queue,
     private readonly storageService: StorageService,
@@ -30,6 +33,15 @@ export class InvoicesService {
     createInvoiceDto: CreateInvoiceDto,
     weighmentSlipFiles?: any,
   ): Promise<Invoice> {
+    // Validate user exists
+    const user = await this.userRepository.findOne({
+      where: { id: createInvoiceDto.userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User with ID ${createInvoiceDto.userId} not found`);
+    }
+
     // Check if invoice number already exists
     const existingInvoice = await this.invoiceRepository.findOne({
       where: { invoiceNumber: createInvoiceDto.invoiceNumber },
@@ -79,6 +91,7 @@ export class InvoicesService {
 
     // Create invoice with proper productName handling
     const invoiceData: any = {
+      user: user, // Associate invoice with user
       invoiceNumber: createInvoiceDto.invoiceNumber,
       invoiceDate: new Date(createInvoiceDto.invoiceDate),
       terms: createInvoiceDto.terms || null,
@@ -127,14 +140,31 @@ export class InvoicesService {
   async findAll(): Promise<Invoice[]> {
     return await this.invoiceRepository.find({
       order: { createdAt: 'DESC' },
-      relations: ['truck'],
+      relations: ['truck', 'user'],
+    });
+  }
+
+  async findByUserId(userId: string): Promise<Invoice[]> {
+    // Validate user exists
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User with ID ${userId} not found`);
+    }
+
+    return await this.invoiceRepository.find({
+      where: { user: { id: userId } },
+      order: { createdAt: 'DESC' },
+      relations: ['truck', 'user'],
     });
   }
 
   async findOne(id: string): Promise<Invoice> {
     const invoice = await this.invoiceRepository.findOne({
       where: { id },
-      relations: ['truck'],
+      relations: ['truck', 'user'],
     });
 
     if (!invoice) {
@@ -147,7 +177,7 @@ export class InvoicesService {
   async findByInvoiceNumber(invoiceNumber: string): Promise<Invoice | null> {
     return await this.invoiceRepository.findOne({
       where: { invoiceNumber },
-      relations: ['truck'],
+      relations: ['truck', 'user'],
     });
   }
 

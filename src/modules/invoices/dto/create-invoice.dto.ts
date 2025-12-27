@@ -6,6 +6,7 @@ import {
   IsNumber,
   IsBoolean,
   IsDateString,
+  IsUUID,
   Min,
   ArrayMinSize,
 } from 'class-validator';
@@ -13,6 +14,11 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type, Transform } from 'class-transformer';
 
 export class CreateInvoiceDto {
+  @ApiProperty({ example: 'user-uuid-here', description: 'User ID who owns this invoice' })
+  @IsUUID()
+  @IsNotEmpty()
+  userId: string;
+
   @ApiProperty({ example: 'INV-2024-001', description: 'Invoice number' })
   @IsString()
   @IsNotEmpty()
